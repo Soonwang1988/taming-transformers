@@ -53,7 +53,8 @@ class ImagePaths(Dataset):
 
     def __getitem__(self, i):
         example = dict()
-        example["image"] = self.preprocess_image(self.labels["file_path_"][i])
+        example["source_image"] = self.preprocess_image(self.labels["file_path_"][i])
+        example["target_image"] = self.preprocess_image(self.labels["file_path_"][i].replace("input", "output"))
         for k in self.labels:
             example[k] = self.labels[k][i]
         return example

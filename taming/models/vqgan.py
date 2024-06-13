@@ -17,7 +17,7 @@ class VQModel(pl.LightningModule):
                  embed_dim,
                  ckpt_path=None,
                  ignore_keys=[],
-                 image_key="image",
+                 image_key="source_image",
                  colorize_nlabels=None,
                  monitor=None,
                  remap=None,
@@ -81,12 +81,13 @@ class VQModel(pl.LightningModule):
         return x.float()
 
     def training_step(self, batch, batch_idx, optimizer_idx):
-        x = self.get_input(batch, self.image_key)
-        xrec, qloss = self(x)
+        x_input = self.get_input(batch, "source_image")
+        x_target = self.get_input(batch, "target_image")
+        xrec, qloss = self(x_input)
 
         if optimizer_idx == 0:
             # autoencode
-            aeloss, log_dict_ae = self.loss(qloss, x, xrec, optimizer_idx, self.global_step,
+            aeloss, log_dict_ae = self.loss(qloss, x_target, xrec, optimizer_idx, self.global_step,
                                             last_layer=self.get_last_layer(), split="train")
 
             self.log("train/aeloss", aeloss, prog_bar=True, logger=True, on_step=True, on_epoch=True)
@@ -95,19 +96,20 @@ class VQModel(pl.LightningModule):
 
         if optimizer_idx == 1:
             # discriminator
-            discloss, log_dict_disc = self.loss(qloss, x, xrec, optimizer_idx, self.global_step,
+            discloss, log_dict_disc = self.loss(qloss, x_target, xrec, optimizer_idx, self.global_step,
                                             last_layer=self.get_last_layer(), split="train")
             self.log("train/discloss", discloss, prog_bar=True, logger=True, on_step=True, on_epoch=True)
             self.log_dict(log_dict_disc, prog_bar=False, logger=True, on_step=True, on_epoch=True)
             return discloss
 
     def validation_step(self, batch, batch_idx):
-        x = self.get_input(batch, self.image_key)
-        xrec, qloss = self(x)
-        aeloss, log_dict_ae = self.loss(qloss, x, xrec, 0, self.global_step,
+        x_input = self.get_input(batch, "source_image")
+        x_target = self.get_input(batch, "target_image")
+        xrec, qloss = self(x_input)
+        aeloss, log_dict_ae = self.loss(qloss, x_target, xrec, 0, self.global_step,
                                             last_layer=self.get_last_layer(), split="val")
 
-        discloss, log_dict_disc = self.loss(qloss, x, xrec, 1, self.global_step,
+        discloss, log_dict_disc = self.loss(qloss, x_target, xrec, 1, self.global_step,
                                             last_layer=self.get_last_layer(), split="val")
         rec_loss = log_dict_ae["val/rec_loss"]
         self.log("val/rec_loss", rec_loss,
@@ -135,15 +137,13 @@ class VQModel(pl.LightningModule):
 
     def log_images(self, batch, **kwargs):
         log = dict()
-        x = self.get_input(batch, self.image_key)
-        x = x.to(self.device)
-        xrec, _ = self(x)
-        if x.shape[1] > 3:
-            # colorize with random projection
-            assert xrec.shape[1] > 3
-            x = self.to_rgb(x)
-            xrec = self.to_rgb(xrec)
-        log["inputs"] = x
+        x_input = self.get_input(batch, "source_image")
+        x_input = x_input.to(self.device)
+        x_target = self.get_input(batch, "target_image")
+        x_target = x_target.to(self.device)
+        xrec, _ = self(x_input)
+        log["source_image"] = x_input
+        log["target_image"] = x_target
         log["reconstructions"] = xrec
         return log
 
